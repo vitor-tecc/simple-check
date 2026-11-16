@@ -1,0 +1,76 @@
+name: Build iOS app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for device (unsigned)
+        run: |
+          xcodebuild -project Checklist.xcodeproj -scheme Checklist \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package unsigned .ipa
+        run: |
+          mkdir -p out/Payload
+          cp -R build/device/Build/Products/Release-iphoneos/Checklist.app out/Payload/
+          cd out && zip -qry Checklist-unsigned.ipa Payload && rm -rf Payload
+
+      - name: Build for simulator
+        run: |
+          xcodebuild -project Checklist.xcodeproj -scheme Checklist \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          cd build/sim/Build/Products/Debug-iphonesimulator
+          zip -qry "$GITHUB_WORKSPACE/out/Checklist-simulator.app.zip" Checklist.app
+
+      - name: Smoke test in simulator (screenshot)
+        continue-on-error: true
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build/sim/Build/Products/Debug-iphonesimulator/Checklist.app
+          xcrun simctl launch "$DEVICE" com.example.checklist
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot out/screenshot.png
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Checklist
+          path: out/*
+
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest out/* \
+            --title "Latest build" \
+            --notes "Built from ${GITHUB_SHA}. The .ipa is unsigned: sign it when installing (e.g. with Sideloadly). The simulator .app.zip can be uploaded to appetize.io." \
+            --target "${GITHUB_SHA}"
