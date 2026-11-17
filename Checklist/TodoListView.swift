@@ -3,9 +3,15 @@ import SwiftData
 
 struct TodoListView: View {
     @Environment(\.modelContext) private var context
-    @Query(filter: #Predicate<TodoItem> { $0.completedAt == nil },
-           sort: [SortDescriptor(\TodoItem.sortOrder), SortDescriptor(\TodoItem.createdAt)])
+    @Query(filter: Self.openItems, sort: Self.listOrder)
     private var items: [TodoItem]
+
+    // Spelled out with explicit types: inline in @Query they made the compiler time out.
+    private static let openItems: Predicate<TodoItem> = #Predicate<TodoItem> { $0.completedAt == nil }
+    private static let listOrder: [SortDescriptor<TodoItem>] = [
+        SortDescriptor(\TodoItem.sortOrder),
+        SortDescriptor(\TodoItem.createdAt),
+    ]
 
     @State private var newTitle = ""
     @FocusState private var inputFocused: Bool
