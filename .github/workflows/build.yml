@@ -31,6 +31,20 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build
 
+      - name: Attach entitlements (ad-hoc signature)
+        # Built with signing off, the app carries no entitlements, so a re-signer
+        # (Sideloadly) would not know the app and widget want a shared App Group.
+        # An ad-hoc signature records them; the re-signer replaces it when installing.
+        run: |
+          APP=build/device/Build/Products/Release-iphoneos/Checklist.app
+          codesign --force --sign - --generate-entitlement-der \
+            --entitlements ChecklistWidget/ChecklistWidget.entitlements \
+            "$APP/PlugIns/ChecklistWidget.appex"
+          codesign --force --sign - --generate-entitlement-der \
+            --entitlements Checklist/Checklist.entitlements \
+            "$APP"
+          codesign -d --entitlements - "$APP/PlugIns/ChecklistWidget.appex"
+
       - name: Package unsigned .ipa
         run: |
           mkdir -p out/Payload

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 struct TodoListView: View {
     @Environment(\.modelContext) private var context
@@ -126,7 +127,14 @@ private struct TodoRow: View {
                             if !text.isEmpty { item.title = text }
                         }
                 } else {
-                    Text(item.title)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        if item.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        Text(item.title)
+                    }
                 }
                 Text(item.createdAt.stamp)
                     .font(.caption)
@@ -136,6 +144,12 @@ private struct TodoRow: View {
         .swipeActions(edge: .leading) {
             Button("Done", systemImage: "checkmark", action: onComplete)
                 .tint(.green)
+            Button(item.isPinned ? "Unpin" : "Pin",
+                   systemImage: item.isPinned ? "pin.slash" : "pin") {
+                withAnimation { item.isPinned.toggle() }
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+            .tint(.orange)
         }
     }
 }
